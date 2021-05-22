@@ -3,8 +3,29 @@
 #include <string.h>
 #include <stdbool.h>
 
+typedef struct Shortcut {
+  char * key_combo;
+  char * command;
+} Shortcut;
+
+Shortcut * new_shortcut(char * line);
+void print_Shortcut(Shortcut * shortcut);
+void delete_Shortcut(Shortcut * shortcut);
+
+typedef struct ListEntry {
+  Shortcut * entry;
+  struct ListEntry * next;
+} ListEntry;
+
+typedef struct List {
+  ListEntry * head;
+  int count;
+} List;
+
+void delete_List(List * list);
+
 FILE * find_config(char * override);
-void parse_config(FILE * config);
+List * parse_config(FILE * config);
 
 int main(int argc, char ** args) {
 
@@ -20,14 +41,23 @@ int main(int argc, char ** args) {
   }
 
   printf("Found config");
-  parse_config(config);
-
+  List * list = parse_config(config);
   fclose(config);
+
+  ListEntry * entry = list->head;
+  while(entry != NULL) {
+    Shortcut * shortcut = entry->entry;
+    print_Shortcut(shortcut);
+    entry = entry->next;
+  }
+  delete_List(list);
+
   return 0;
 }
 
 FILE * find_config(char * override) {
   if(override != NULL) {
+    printf("Using config path: %s\n", override);
     return fopen(override, "r");
   }
 
@@ -92,13 +122,23 @@ FILE * find_config(char * override) {
   return found;
 }
 
-void parse_config(FILE * config) {
+List * parse_config(FILE * config) {
 
   char * line = NULL;
   size_t len = 0;
   ssize_t read;
   bool in_bar = false;
   int mode_depth = 0;
+
+  List * list = malloc(sizeof(List));
+  if(list == NULL) {
+    fprintf(stderr, "Could not create list");
+    exit(1);
+  }
+  list->count = 0;
+  list->head = NULL;
+  ListEntry * last_entry = NULL;
+
   while((read = getline(&line, &len, config)) != -1) {
     if(len <= 0) continue;
     //printf("%s", line);
@@ -136,8 +176,85 @@ void parse_config(FILE * config) {
         // contains more code on next lines
         continue;
       }
-      printf("%s", line);
+      Shortcut * shortcut = new_shortcut(line);
+      if(shortcut != NULL) {
+        ListEntry * entry = malloc(sizeof(ListEntry));
+        if(entry == NULL) {
+          fprintf(stderr, "Could not create list entry");
+          exit(1);
+        }
+        entry->entry = shortcut;
+        entry->next = NULL;
+        if(last_entry == NULL) {
+          list->head = entry;
+        } else {
+          last_entry->next = entry;
+        }
+        list->count ++;
+        last_entry = entry;
+      }
     }
   }
 
+  return list;
+}
+
+Shortcut * new_shortcut(char * line) {
+  if(line == NULL) return NULL;
+  if(strstr(line, "bindsym") == NULL) return NULL;
+
+  char * bindsym_token = strtok(line, " ");
+  char * shortcut_token = strtok(NULL, " ");
+  char * command_token = line + (2 + strlen(shortcut_token) + strlen(bindsym_token));
+
+  Shortcut * shortcut = malloc(sizeof(Shortcut));
+  if(shortcut == NULL) { 
+    fprintf(stderr, "Could not allocate shortcut");
+    exit(1);
+  }
+
+  char * key_combo = malloc(strlen(shortcut_token) + 1);
+  if(key_combo == NULL) {
+    fprintf(stderr, "Could not allocate string");
+    exit(1);
+  }
+  strcpy(key_combo, shortcut_token);
+  shortcut->key_combo = key_combo;
+
+  char * command = malloc(strlen(command_token) + 1);
+  if(key_combo == NULL) {
+    fprintf(stderr, "Could not allocate string");
+    exit(1);
+  }
+  strcpy(command, command_token);
+  command[strcspn(command, "\n")] = 0;
+  shortcut->command = command;
+  return shortcut;
+}
+
+void print_Shortcut(Shortcut * shortcut) {
+  printf("Key Combo: %s\nCommand: %s\n", shortcut->key_combo, shortcut->command);
+}
+
+void delete_Shortcut(Shortcut * shortcut) {
+  if(shortcut == NULL) return;
+  free(shortcut->key_combo);
+  free(shortcut->command);
+  free(shortcut);
+  shortcut->key_combo = NULL;
+  shortcut->command = NULL;
+  shortcut = NULL;
+}
+
+void delete_List(List * list) {
+  if(list == NULL) return;
+  if(list->count > 0 && list->head != NULL) {
+    ListEntry * entry = list->head;
+    for(int i = 0; i < list->count; i ++) {
+      delete_Shortcut(entry->entry);
+      entry = entry->next;
+    }
+  }
+  free(list);
+  list = NULL;
 }
