@@ -3,6 +3,11 @@
 #include <string.h>
 #include <stdbool.h>
 
+typedef struct Config {
+  FILE * file;
+  char * path;
+} Config;
+
 typedef struct Shortcut {
   char * key_combo;
   char * command;
@@ -24,8 +29,8 @@ typedef struct List {
 
 void delete_List(List * list);
 
-FILE * find_config(char * override);
-List * parse_config(FILE * config);
+Config * find_config(char * override);
+List * parse_config(Config * config);
 
 int main(int argc, char ** args) {
 
@@ -33,16 +38,14 @@ int main(int argc, char ** args) {
   if(argc > 1) {
     override_path = args[1];
   }
-  FILE * config = find_config(override_path);
+  Config* config = find_config(override_path);
 
   if(config == NULL) {
     fprintf(stderr, "Could not find config file");
     return 1;
   }
 
-  printf("Found config");
   List * list = parse_config(config);
-  fclose(config);
 
   ListEntry * entry = list->head;
   while(entry != NULL) {
@@ -55,14 +58,24 @@ int main(int argc, char ** args) {
   return 0;
 }
 
-FILE * find_config(char * override) {
+Config * find_config(char * override) {
   if(override != NULL) {
-    printf("Using config path: %s\n", override);
-    return fopen(override, "r");
+    FILE * file = fopen(override, "r");
+    if(file == NULL) return NULL;
+    Config * config = malloc(sizeof(Config));
+    if(config == NULL) {
+      fprintf(stderr, "Could not create config");
+      exit(1);
+    }
+    config->path = override;
+    config->file = file;
+    return config;
   }
 
   FILE * found = NULL;
   char * home_dir = getenv("HOME");
+
+  Config * config = NULL;
 
   if(home_dir != NULL) {
 
@@ -82,9 +95,14 @@ FILE * find_config(char * override) {
     found = fopen(path, "r");
     
     if(found != NULL) {
-      printf("Found config: %s\n", path);
-      free(path);
-      return found;
+      config = malloc(sizeof(Config));
+      if(config == NULL) {
+        fprintf(stderr, "Could not create config");
+        exit(1);
+      }
+      config->path = path;
+      config->file = found;
+      return config;
     }
 
     
@@ -101,9 +119,14 @@ FILE * find_config(char * override) {
     found = fopen(path, "r");
 
     if(found != NULL) {
-      printf("Found config: %s\n", path);
-      free(path);
-      return found;
+      config = malloc(sizeof(Config));
+      if(config == NULL) {
+        fprintf(stderr, "Could not create config");
+        exit(1);
+      }
+      config->path = path;
+      config->file = found;
+      return config;
     }
 
     free(path);
@@ -116,13 +139,21 @@ FILE * find_config(char * override) {
   char * etc_config = "/etc/i3/config";
   found = fopen(etc_config, "r");
   if(found != NULL) {
-    printf("Found config: %s\n", etc_config);
+    config = malloc(sizeof(Config));
+    if(config == NULL) {
+      fprintf(stderr, "Could not create config");
+      exit(1);
+    }
+    config->path = etc_config;
+    config->file = found;
+    return config;
   }
   
-  return found;
+  return NULL;
 }
 
-List * parse_config(FILE * config) {
+List * parse_config(Config * config) {
+  if(config == NULL) return NULL;
 
   char * line = NULL;
   size_t len = 0;
@@ -139,7 +170,7 @@ List * parse_config(FILE * config) {
   list->head = NULL;
   ListEntry * last_entry = NULL;
 
-  while((read = getline(&line, &len, config)) != -1) {
+  while((read = getline(&line, &len, config->file)) != -1) {
     if(len <= 0) continue;
     //printf("%s", line);
     if(line[0] == '#') continue;
@@ -195,7 +226,7 @@ List * parse_config(FILE * config) {
       }
     }
   }
-
+  fclose(config->file);
   return list;
 }
 
@@ -233,7 +264,7 @@ Shortcut * new_shortcut(char * line) {
 }
 
 void print_Shortcut(Shortcut * shortcut) {
-  printf("Key Combo: %s\nCommand: %s\n", shortcut->key_combo, shortcut->command);
+  printf("%s\t%s\n", shortcut->key_combo, shortcut->command);
 }
 
 void delete_Shortcut(Shortcut * shortcut) {
